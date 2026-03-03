@@ -16,7 +16,7 @@ def create_database():
     try:
         con = sqlite3.connect(db_file)
         cur = con.cursor()
-        cur.execute('CREATE TABLE hosts_seen(host TEXT NOT NULL, ts INTEGER NOT NULL, PRIMARY KEY(host))')
+        cur.execute('CREATE TABLE hosts_seen(host TEXT NOT NULL, name TEXT NOT NULL, ts INTEGER NOT NULL, PRIMARY KEY(host))')
         cur.execute('CREATE TABLE ports_seen(host TEXT NOT NULL, port INTEGER NOT NULL, ts INTEGER NOT NULL, PRIMARY KEY(host, port))')
         cur.execute('PRAGMA journal_mode=wal')
         cur.close()
@@ -55,9 +55,9 @@ def poller():
                 time.sleep(1)
                 continue
 
-            def poll_thread(host):
+            def poll_thread(host, name):
                 try:
-                    print(f'\ttest {host}')
+                    # print(f'\ttest {host}')
                     now = int(time.time())
 
                     ports = []
@@ -69,10 +69,10 @@ def poller():
                         try:
                             con = sqlite3.connect(db_file)
                             cur = con.cursor()
-                            cur.execute("INSERT INTO hosts_seen(host, ts) VALUES(?, ?) ON CONFLICT(host) DO UPDATE SET ts=DATE('now')", (host, now))
+                            cur.execute("INSERT INTO hosts_seen(host, name, ts) VALUES(?, ?, ?) ON CONFLICT(host) DO UPDATE SET ts=?", (host, name, now, now))
                             for port in ports:
-                                cur.execute("INSERT INTO ports_seen(host, port, ts) VALUES(?, ?, ?) ON CONFLICT(host, port) DO UPDATE SET ts=DATE('now')", (host, port, now))
-                                print(f'\t\t{host} is listening on port {port}')
+                                cur.execute("INSERT INTO ports_seen(host, port, ts) VALUES(?, ?, ?) ON CONFLICT(host, port) DO UPDATE SET ts=?", (host, port, now, now))
+                                # print(f'\t\t{host} is listening on port {port}')
 
                         finally:
                             cur.close()
@@ -88,6 +88,7 @@ def poller():
                 host = line.rstrip('\n').split()
                 if len(host) == 0:
                     continue
+                name = host[1]
                 host = host[0]
 
                 while len(threads) > 32:
@@ -97,7 +98,7 @@ def poller():
                     threads[0].join()
                     del threads[0]
 
-                t = threading.Thread(target=poll_thread, args=(host,))
+                t = threading.Thread(target=poll_thread, args=(host, name))
                 t.start()
                 threads.append(t)
 
@@ -114,20 +115,87 @@ def poller():
                 con.close()
 
         print('Sleeping for next poll')
-        time.sleep(59)
+        time.sleep(39)
 
 if __name__ == '__main__':
     create_database()
 
-    th = threading.Thread(target=poller())
+    th = threading.Thread(target=poller)
     th.start()
 
-    from fastapi import FastAPI
+    from fastapi import FastAPI, Response
     app = FastAPI()
 
-    @app.get("/")
+    @app.get('/')
     async def root():
-        return '<h2>Hello, world!</h2>'
+        page = '''<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>NURDspace hosts</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="utf-8">
+<link href="https://komputilo.nl/simple.css" rel="stylesheet" type="text/css">
+</head>
+<body>
+<header><h1>NURDspace hosts</h1></header>
+<article>
+<section><table>'''
+
+        now = time.time()
+
+        try:
+            con = sqlite3.connect(db_file)
+            cur = con.cursor()
+            # get a list of all unique ports ever probed
+            cur.execute('SELECT DISTINCT(port) FROM ports_seen ORDER BY port')
+            ports = [row[0] for row in cur]
+            page += '<tr><th>host</th>'
+            for port in ports:
+                page += f'<th>{port}</th>'
+            page + '</tr>'
+
+            port_query = 'SELECT port, ts FROM ports_seen WHERE port in (' + ', '.join([str(port) for port in ports]) + ') AND host=? ORDER BY port'
+
+            cur.execute('SELECT host, name, ts FROM hosts_seen ORDER BY name')
+            for row in cur:
+                page += f'<tr><td>{row[1]}</td>'
+                down = now - float(row[2])
+                if down > 60:  # 60 is hosts.txt refresh time
+                    page += f'<td colspan={len(ports)}>down for {down:.2f}s</td>'
+                else:
+                    port_cur = con.cursor()
+                    port_cur.execute(port_query, (row[0],))
+                    port_results = dict()
+                    for port in port_cur:
+                        port_nr = int(port[0])
+                        if now - port[1] <= 60:
+                            port_results[port_nr] = ( u'\u2713', '#40ff40')
+                        else:
+                            port_results[port_nr] = (u'\u26a0', '#ff4040')
+                    port_cur.close()
+                    for port in ports:
+                        if port in port_results:
+                            page += f'<td style="color: {port_results[port][1]}">{port_results[port][0]}</td>'
+                        else:
+                            page += '<td>-</td>'
+                page += '</tr>'
+
+            cur.close()
+            con.close()
+
+        except sqlite3.OperationalError as e:
+            print(f'SQL error: {e}')
+
+        except Exception as e:
+            print(f'other error: {e}')
+
+        page += '''</section>
+</article>
+</body>
+</html>
+'''
+
+        return Response(content=page)
 
     print('Running webserver')
     import uvicorn
