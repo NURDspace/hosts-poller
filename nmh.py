@@ -152,7 +152,7 @@ if __name__ == '__main__':
             page += '<tr><th>host</th>'
             for port in ports:
                 page += f'<th>{port}</th>'
-            page + '</tr>'
+            page += '<th>IP address</th></tr>'
 
             port_query = 'SELECT port, ts FROM ports_seen WHERE port in (' + ', '.join([str(port) for port in ports]) + ') AND host=? ORDER BY port'
 
@@ -178,10 +178,12 @@ if __name__ == '__main__':
                             page += f'<td style="color: {port_results[port][1]}">{port_results[port][0]}</td>'
                         else:
                             page += '<td>-</td>'
-                page += '</tr>'
+                page += f'<td>{row[0]}</td></tr>'
 
             cur.close()
             con.close()
+
+            page += '</table>'
 
         except sqlite3.OperationalError as e:
             print(f'SQL error: {e}')
@@ -191,6 +193,8 @@ if __name__ == '__main__':
 
         page += '''</section>
 </article>
+<p>Written by Folkert van Heusden</p>
+<p>Original idea by Melan</p>
 </body>
 </html>
 '''
