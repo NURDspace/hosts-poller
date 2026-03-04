@@ -140,7 +140,7 @@ if __name__ == '__main__':
 <body>
 <header><h1>NURDspace hosts</h1></header>
 <article>
-<section><p>Hover over elements to see more details.</p><table>'''
+<section><p>Hover over elements to see more details.</p><script src="https://www.komputilo.nl/sorttable.js"></script><table class="sortable">'''
 
         now = time.time()
 
@@ -150,7 +150,7 @@ if __name__ == '__main__':
             # get a list of all unique ports ever probed
             cur.execute('SELECT DISTINCT(port) FROM ports_seen ORDER BY port')
             ports = [row[0] for row in cur]
-            page += '<tr><th>host</th>'
+            page += '<tr><th>host name</th><th>IP address</th>'
             for port in ports:
                 page += f'<th>{port}</th>'
             page += '</tr>'
@@ -159,7 +159,7 @@ if __name__ == '__main__':
 
             cur.execute('SELECT host, name, ts FROM hosts_seen ORDER BY name')
             for row in cur:
-                page += f'<tr><td title="{row[0]}">{row[1]}</td>'
+                page += f'<tr class="item"><td>{row[1]}</td><td>{row[0]}</td>'
                 down = now - float(row[2])
                 if down > 60:  # 60 is hosts.txt refresh time
                     page += f'<td colspan={len(ports)} title="down for {down:.2f} seconds">down</td>'
