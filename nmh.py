@@ -150,7 +150,7 @@ if __name__ == '__main__':
             # get a list of all unique ports ever probed
             cur.execute('SELECT DISTINCT(port) FROM ports_seen ORDER BY port')
             ports = [row[0] for row in cur]
-            page += '<tr><th>host name</th><th>IP address</th>'
+            page += '<tr><th>host name</th><th class="sorttable_alpha">IP address</th>'
             for port in ports:
                 page += f'<th>{port}</th>'
             page += '</tr>'
