@@ -70,7 +70,7 @@ def poller():
                         try:
                             con = sqlite3.connect(db_file)
                             cur = con.cursor()
-                            cur.execute("INSERT INTO hosts_seen(host, name, ts) VALUES(?, ?, ?) ON CONFLICT(host) DO UPDATE SET ts=?", (host, name, now, now))
+                            cur.execute("INSERT INTO hosts_seen(host, name, ts) VALUES(?, ?, ?) ON CONFLICT(host) DO UPDATE SET ts=?, name=?", (host, name, now, now, name))
                             for port, latency in ports:
                                 cur.execute("INSERT INTO ports_seen(host, port, ts, latency) VALUES(?, ?, ?, ?) ON CONFLICT(host, port) DO UPDATE SET ts=?, latency=?", (host, port, now, latency, now, latency))
                                 # print(f'\t\t{host} is listening on port {port}')
@@ -140,7 +140,7 @@ if __name__ == '__main__':
 <body>
 <header><h1>NURDspace hosts</h1></header>
 <article>
-<section><p>Hover over elements to see more details.</p><script src="https://www.komputilo.nl/sorttable.js"></script><table class="sortable">'''
+<section><p>Hover over elements to see more details. Click on a header to sort a column.</p><script src="https://www.komputilo.nl/sorttable.js"></script><table class="sortable">'''
 
         now = time.time()
 
