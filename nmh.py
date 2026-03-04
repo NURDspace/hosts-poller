@@ -31,12 +31,12 @@ def poll_tcp_port(addr):
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(0.5)
+        t = time.time()
         s.connect(addr)
-
-        return True
+        return time.time() - t
 
     except:
-        return False
+        return None
 
     finally:
         s.close()
@@ -62,16 +62,17 @@ def poller():
 
                     ports = []
                     for port in (22, 80, 443):
-                        if poll_tcp_port((host, port)):
-                            ports.append(port)
+                        latency = poll_tcp_port((host, port))
+                        if not latency is None:
+                            ports.append((port, latency))
 
                     if len(ports) > 0:
                         try:
                             con = sqlite3.connect(db_file)
                             cur = con.cursor()
                             cur.execute("INSERT INTO hosts_seen(host, name, ts) VALUES(?, ?, ?) ON CONFLICT(host) DO UPDATE SET ts=?", (host, name, now, now))
-                            for port in ports:
-                                cur.execute("INSERT INTO ports_seen(host, port, ts) VALUES(?, ?, ?) ON CONFLICT(host, port) DO UPDATE SET ts=?", (host, port, now, now))
+                            for port, latency in ports:
+                                cur.execute("INSERT INTO ports_seen(host, port, ts, latency) VALUES(?, ?, ?, ?) ON CONFLICT(host, port) DO UPDATE SET ts=?, latency=?", (host, port, now, latency, now, latency))
                                 # print(f'\t\t{host} is listening on port {port}')
 
                         finally:
@@ -139,7 +140,7 @@ if __name__ == '__main__':
 <body>
 <header><h1>NURDspace hosts</h1></header>
 <article>
-<section><table>'''
+<section><p>Hover over elements to see more details.</p><table>'''
 
         now = time.time()
 
@@ -152,16 +153,16 @@ if __name__ == '__main__':
             page += '<tr><th>host</th>'
             for port in ports:
                 page += f'<th>{port}</th>'
-            page += '<th>IP address</th></tr>'
+            page += '</tr>'
 
-            port_query = 'SELECT port, ts FROM ports_seen WHERE port in (' + ', '.join([str(port) for port in ports]) + ') AND host=? ORDER BY port'
+            port_query = 'SELECT port, ts, latency FROM ports_seen WHERE port in (' + ', '.join([str(port) for port in ports]) + ') AND host=? ORDER BY port'
 
             cur.execute('SELECT host, name, ts FROM hosts_seen ORDER BY name')
             for row in cur:
-                page += f'<tr><td>{row[1]}</td>'
+                page += f'<tr><td title="{row[0]}">{row[1]}</td>'
                 down = now - float(row[2])
                 if down > 60:  # 60 is hosts.txt refresh time
-                    page += f'<td colspan={len(ports)}>down for {down:.2f}s</td>'
+                    page += f'<td colspan={len(ports)} title="down for {down:.2f} seconds">down</td>'
                 else:
                     port_cur = con.cursor()
                     port_cur.execute(port_query, (row[0],))
@@ -169,16 +170,18 @@ if __name__ == '__main__':
                     for port in port_cur:
                         port_nr = int(port[0])
                         if now - port[1] <= 60:
-                            port_results[port_nr] = ( u'\u2713', '#40ff40')
+                            port_results[port_nr] = (u'\u2713', '#40ff40', port[2])
                         else:
-                            port_results[port_nr] = (u'\u26a0', '#ff4040')
+                            port_results[port_nr] = (u'\u26a0', '#ff4040', port[2])
                     port_cur.close()
                     for port in ports:
                         if port in port_results:
-                            page += f'<td style="color: {port_results[port][1]}">{port_results[port][0]}</td>'
+                            latency = port_results[port][2]
+                            latency_str = f'{latency * 1000000:.0f} us' if latency < 0.001 else f'{latency * 1000:.0f} ms'
+                            page += f'<td style="color: {port_results[port][1]}" title="{latency_str}">{port_results[port][0]}</td>'
                         else:
                             page += '<td>-</td>'
-                page += f'<td>{row[0]}</td></tr>'
+                page += f'</tr>'
 
             cur.close()
             con.close()
