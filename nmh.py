@@ -118,6 +118,14 @@ def poller():
         print('Sleeping for next poll')
         time.sleep(39)
 
+def host_has_port(host, port):
+    con = sqlite3.connect(db_file)
+    cur = con.cursor()
+    cur.execute('SELECT COUNT(*) AS n FROM ports_seen WHERE port=? AND host=?', (port, host))
+    row = cur.fetchone()
+    cur.close()
+    return row[0] == 1
+
 if __name__ == '__main__':
     create_database()
 
@@ -159,7 +167,12 @@ if __name__ == '__main__':
 
             cur.execute('SELECT host, name, ts FROM hosts_seen ORDER BY name')
             for row in cur:
-                page += f'<tr class="item"><td>{row[1]}</td><td>{row[0]}</td>'
+                has_http = host_has_port(row[0], 80)
+                has_https = host_has_port(row[0], 443)
+                if has_http or has_https:
+                    page += f'<tr class="item"><td><a href="{"https" if has_https else "http"}://{row[1]}/">{row[1]}</td><td>{row[0]}</td>'
+                else:
+                    page += f'<tr class="item"><td>{row[1]}</td><td>{row[0]}</td>'
                 down = now - float(row[2])
                 if down > 60:  # 60 is hosts.txt refresh time
                     page += f'<td colspan={len(ports)} title="down for {down:.2f} seconds">down</td>'
